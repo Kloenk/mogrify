@@ -30,9 +30,15 @@ defmodule Mogrify do
       final_output_path = if image.dirty[:path], do: image.dirty[:path], else: image.path
 
       args = arguments_for_saving_in_place(image)
-      {_, 0} = cmd_mogrify(args, cmd_opts)
 
-      image_after_command(image, final_output_path)
+      cmd_mogrify(args, cmd_opts)
+      |> case do
+        {_, 0} ->
+          {:ok, image_after_command(image, final_output_path)}
+
+        {v, e} ->
+          {:error, {:exit, v, e}}
+      end
     else
       cmd_output_path = output_path_for(image, opts)
       final_output_path = Keyword.get(opts, :path, cmd_output_path)
@@ -40,16 +46,22 @@ defmodule Mogrify do
       create_folder_if_doesnt_exist!(final_output_path)
 
       args = arguments_for_saving(image, cmd_output_path)
-      {_, 0} = cmd_convert(args, cmd_opts)
 
-      # final output path may differ if temporary path was used for image format
-      if cmd_output_path != final_output_path do
-        # copy then rm, because File.rename/2 may fail across filesystem boundary
-        File.copy!(cmd_output_path, final_output_path)
-        File.rm!(cmd_output_path)
+      cmd_convert(args, cmd_opts)
+      |> case do
+        {_, 0} ->
+          # final output path may differ if temporary path was used for image format
+          if cmd_output_path != final_output_path do
+            # copy then rm, because File.rename/2 may fail across filesystem boundary
+            File.copy!(cmd_output_path, final_output_path)
+            File.rm!(cmd_output_path)
+          end
+
+          {:ok, image_after_command(image, final_output_path)}
+
+        {v, e} ->
+          {:error, {:exit, v, e}}
       end
-
-      image_after_command(image, final_output_path)
     end
   end
 
